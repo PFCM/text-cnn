@@ -5,6 +5,8 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
+from six.moves import reduce
+
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.data as data
@@ -124,3 +126,30 @@ def load_dataset(filepath, vocab, sequence_length, batch_size):
     data_tensor.set_shape([batch_size, sequence_length])
 
     return data_tensor
+
+
+def _subword_join(a, b):
+    """vocab aware join operation"""
+    if a.endswith('@@'):
+        a = a[:-2]
+        join = ''
+    elif a == '\n':
+        join = ''
+    else:
+        join = ' '
+    return a + join + b
+
+
+def invert_vocab(vocab):
+    """Invert a vocabulary dictionary."""
+    return {b: a for a, b in vocab.items()}
+
+
+def to_human_readable(items, vocab, invert_vocabulary=False):
+    """turn some integer labels into a words"""
+    if len(items.shape) == 1:
+        items = np.reshape(items, (1, -1))
+    if invert_vocabulary:
+        vocab = invert_vocab(vocab)
+    return [reduce(_subword_join, [vocab[index] for index in row])
+            for row in items]
