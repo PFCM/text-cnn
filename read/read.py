@@ -74,7 +74,7 @@ def _load_text(path, vocab):
         tokens = (token
                   for line in text_file
                   for token in line.split() + ['\n'])
-        return np.array([vocab[token] for token in tokens], dtype=tf.int32)
+        return np.array([vocab[token] for token in tokens], dtype=np.int32)
 
 
 def _regenerate_indices(data_length, batch_size):
@@ -84,9 +84,32 @@ def _regenerate_indices(data_length, batch_size):
     return np.random.randint(data_length//4, size=(batch_size,))
 
 
+class TextDataset(object):
+    """Class holding a bit of state for the dataset"""
+
+    def __init__(self, flat_data, sequence_length, batch_size):
+        """Set it up"""
+        self._flat_data = flat_data
+        self._sequence_length = sequence_length
+        self._batch_size = batch_size
+        self._batch_indices = _regenerate_indices(self._flat_data.shape[0],
+                                                  self._batch_size)
+
+    def get_batch(self):
+        """Get some chunks of data"""
+        data = np.array([self._flat_data[index:index+self._sequence_length]
+                         for index in self._batch_indices])
+        self._batch_indices += self._sequence_length
+        if np.any(self._batch_indices > self._flat_data.shape[0]):
+            self._batch_indices = _regenerate_indices(self._flat_data.shape[0],
+                                                      self._batch_size)
+        return data
+
+
 def load_dataset(filepath, vocab, sequence_length, batch_size):
     """
     Get a tensor which will roll through batches of data.
+
     Each batch item goes through the text in order from a random
     starting position until one of them reaches the end.
     """
@@ -95,12 +118,9 @@ def load_dataset(filepath, vocab, sequence_length, batch_size):
     batch_indices = _regenerate_indices(flat_data.shape[0],
                                         batch_size)
 
-    def _get_batch():
-        data = np.array([flat_data[index:index+sequence_length]
-                         for index in batch_indices])
-        batch_indices += sequence_length
-        if np.any(batch_indices > flat_data.shape[0]):
-            batch_indices = _regenerate_indices(flat_data.shape[0], batch_size)
-        return data
+    dataset = TextDataset(flat_data, sequence_length, batch_size)
 
-    return tf.py_func(_get_batch, [], [tf.int32])
+    data_tensor = tf.py_func(dataset.get_batch, [], [tf.int32])[0]
+    data_tensor.set_shape([batch_size, sequence_length])
+
+    return data_tensor
