@@ -9,13 +9,23 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 
 
-def generation_net(inputs):
+def generator_net(inputs, vocab_size,
+                  num_blocks=2, block_size=3, block_width=128):
     """
     A network to generate something conditioned purely on a single set of
-    inputs (which can be replaced by its own outputs at generation time,
-    although this could be fairly inefficient.
+    input embeddings (which can be replaced by its own outputs at generation
+    time, although this could be fairly inefficient.
     """
-    pass
+    with tf.variable_scope('generator'):
+        net = inputs
+        for block in range(num_blocks):
+            net += _block(net,
+                          block_width,
+                          filter_size=2,
+                          depth=block_size,
+                          name='block_{}'.format(block))
+        net = tf.layers.conv1d(net, block_width, 1, 1)
+    return net
 
 
 def _causal_convolution(inputs, filter_size, num_channels, rate=1,
@@ -77,10 +87,44 @@ def _block(inputs, output_channels, filter_size=2,
     with tf.variable_scope(name):
         net = inputs
         for layer in range(depth):
-            net = _causal_convolution(net, filter_size, output_channels)
+            net = _causal_convolution(net,
+                                      filter_size,
+                                      output_channels,
+                                      rate=dilation_base**layer,
+                                      name='conv_{}'.format(layer))
+            net = layer_norm(net, name='ln_{}'.format(layer))
+            net = tf.nn.relu(net)
+        return net
 
 
-def upsampling_net(inputs, name='upsampler'):
+def layer_norm(inputs, epsilon=1e-8, name='layer_norm'):
+    """
+    Layer normalisation along the last axis.
+    """
+    with tf.variable_scope(name):
+        shape = tf.shape(inputs)
+        beta = tf.get_variable(
+            'beta', [shape[-1]],
+            initializer=tf.constant_initializer(0),
+            trainable=True)
+        gamma = tf.get_variable(
+            'gamma', [shape[-1]],
+            initializer=tf.constant_initializer(1),
+            trainable=True)
+
+        mean, variance = tf.nn.moments(inputs, axes=[len(shape) - 1],
+                                       keep_dims=True)
+
+        result = (inputs - mean) / tf.sqrt(variance + epsilon)
+
+        return gamma * result + beta
+
+
+def upsampling_net(inputs,
+                   num_blocks=2,
+                   block_depth=3,
+                   block_width=128,
+                   name='upsampler'):
     """
     A network to upsample that generates two outputs for each individual
     input. These outputs are conditioned on a receptive field extending only
@@ -101,6 +145,19 @@ def upsampling_net(inputs, name='upsampler'):
         tensor: a `[batch, time*2, channels]` upsampled tensor.
     """
     with tf.variable_scope(name):
-        # to upsample we'll just generate a couple of extra channels and then
-        # reshape
-        pass
+        # to upsample we will resample the original signal and then push it
+        # through a few layers
+        expanded_inputs = tf.expand_dims(inputs, 1)
+        new_shape = expanded_inputs.get_shape().as_list()
+        new_shape[2] *= 2
+        expanded_inputs = tf.image.resize_nearest_neighbor(
+            expanded_inputs, size=new_shape)
+        net = tf.squeeze(expanded_inputs, 1)
+
+        for block in range(num_blocks):
+            net += _block(net, block_width,
+                          filter_size=2,
+                          depth=block_depth,
+                          name='block_{}'.format(block))
+
+        return net
