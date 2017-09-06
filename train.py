@@ -42,7 +42,6 @@ def get_data(data_path,
     return embedded_data, vocab
 
 
-
 def main(_):
     """actually do a things"""
     pass
