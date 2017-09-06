@@ -124,13 +124,17 @@ def upsampling_net(inputs,
                    num_blocks=2,
                    block_depth=3,
                    block_width=128,
+                   causal=True,
                    name='upsampler'):
     """
     A network to upsample that generates two outputs for each individual
-    input. These outputs are conditioned on a receptive field extending only
-    backwards in time to enable linear time generation. To achieve this we
-    use causal 1D convolutions, which just amounts to padding the front of the
-    input and doing a bit of a shift.
+    input. These outputs can be conditioned on a receptive field extending only
+    backwards in time to enable continuous generation in linear time. To
+    achieve this we use causal 1D convolutions, which just amounts to padding
+    the front of the input and doing a bit of a shift. If this is not desired
+    we can just use normal convolutions which will likely perform slightly
+    better but means we have to generate the entire lower level representation
+    first.
 
     The input size (and the number of filters throughout) is just the same as
     the number of input channels.
@@ -148,8 +152,8 @@ def upsampling_net(inputs,
         # to upsample we will resample the original signal and then push it
         # through a few layers
         expanded_inputs = tf.expand_dims(inputs, 1)
-        new_shape = expanded_inputs.get_shape().as_list()
-        new_shape[2] *= 2
+        new_shape = expanded_inputs.get_shape().as_list()[1:3]
+        new_shape[1] *= 2
         expanded_inputs = tf.image.resize_nearest_neighbor(
             expanded_inputs, size=new_shape)
         net = tf.squeeze(expanded_inputs, 1)

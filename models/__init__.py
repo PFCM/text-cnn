@@ -1,1 +1,1 @@
-from ar_cnn import *
+from models.ar_cnn import *
