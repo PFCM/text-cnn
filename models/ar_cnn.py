@@ -65,7 +65,7 @@ def _causal_convolution(inputs, filter_size, num_channels, rate=1,
 
 
 def _block(inputs, output_channels, filter_size=2,
-           depth=4, dilation_base=4, name='res_block'):
+           depth=4, dilation_base=4, causal=True, name='res_block'):
     """One block which we use in between residual layers. Consists of a number
     of stacked dilated convolutions and layer normalisation.
 
@@ -79,6 +79,8 @@ def _block(inputs, output_channels, filter_size=2,
         dilation_base (int): number controlling the growth of the receptive
             field. Each layer, starting at 0, will have dilation rate
             `dilation_base ** layer`.
+        causal (bool): if True, only causal convolutions are used. Otherwise
+            normal convolutions.
         name (str): name for the block.
 
     Returns:
@@ -87,11 +89,20 @@ def _block(inputs, output_channels, filter_size=2,
     with tf.variable_scope(name):
         net = inputs
         for layer in range(depth):
-            net = _causal_convolution(net,
-                                      filter_size,
-                                      output_channels,
-                                      rate=dilation_base**layer,
-                                      name='conv_{}'.format(layer))
+            if causal:
+                net = _causal_convolution(net,
+                                          filter_size,
+                                          output_channels,
+                                          rate=dilation_base**layer,
+                                          name='conv_{}'.format(layer))
+            else:
+                net = tf.layers.conv1d(net,
+                                       output_channels,
+                                       filter_size,
+                                       dilation_rate=dilation_base**layer,
+                                       strides=1,
+                                       padding='SAME',
+                                       name='conv_{}'.format(layer))
             net = layer_norm(net, name='ln_{}'.format(layer))
             net = tf.nn.relu(net)
         return net
@@ -162,6 +173,7 @@ def upsampling_net(inputs,
             net += _block(net, block_width,
                           filter_size=2,
                           depth=block_depth,
+                          causal=causal,
                           name='block_{}'.format(block))
 
         return net
