@@ -38,7 +38,7 @@ def _downsample_inputs(data, downsample):
     data = tf.expand_dims(data, 1)
     data = tf.nn.avg_pool(data,
                           [1, 1, downsample, 1],
-                          [1, 1, downsample, 1]
+                          [1, 1, downsample, 1],
                           'SAME')
     return data
 
