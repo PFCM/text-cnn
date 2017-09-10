@@ -72,7 +72,11 @@ def main(_):
                                    FLAGS.rate//2,
                                    FLAGS.sequence_length,
                                    FLAGS.batch_size)
-
+    # shift??
+    if FLAGS.rate > 1:
+        input_batch = _downsample_inputs(target_batch, 2)
+    else:
+        input_batch = target_batch
 
 
 if __name__ == '__main__':
