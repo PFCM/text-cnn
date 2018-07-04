@@ -1,16 +1,17 @@
 """
 Hierarchical autoregressive convolutional neural network.
 """
-from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
+from __future__ import absolute_import, division, print_function
 
 import tensorflow as tf
 import tensorflow.contrib.slim as slim
 
 
-def generator_net(inputs, vocab_size,
-                  num_blocks=2, block_size=3, block_width=128):
+def generator_net(inputs,
+                  vocab_size,
+                  num_blocks=2,
+                  block_size=3,
+                  block_width=128):
     """
     A network to generate something conditioned purely on a single set of
     input embeddings (which can be replaced by its own outputs at generation
@@ -19,16 +20,20 @@ def generator_net(inputs, vocab_size,
     with tf.variable_scope('generator'):
         net = inputs
         for block in range(num_blocks):
-            net += _block(net,
-                          block_width,
-                          filter_size=2,
-                          depth=block_size,
-                          name='block_{}'.format(block))
+            net += _block(
+                net,
+                block_width,
+                filter_size=2,
+                depth=block_size,
+                name='block_{}'.format(block))
         net = tf.layers.conv1d(net, block_width, 1, 1)
     return net
 
 
-def _causal_convolution(inputs, filter_size, num_channels, rate=1,
+def _causal_convolution(inputs,
+                        filter_size,
+                        num_channels,
+                        rate=1,
                         name='causal_conv'):
     """Linear convolution in which each output is dependent only on preceding
     inputs.
@@ -54,18 +59,24 @@ def _causal_convolution(inputs, filter_size, num_channels, rate=1,
         padding = (filter_size - 1) * rate
         padded = tf.pad(inputs, [[0, 0], [padding, 0], [0, 0]])
         # now if we just do a valid convolution, everything should work out
-        result = tf.layers.conv1d(padded,
-                                  num_channels,
-                                  filter_size,
-                                  strides=1,
-                                  padding='VALID',
-                                  dilation_rate=rate,
-                                  name=name)
+        result = tf.layers.conv1d(
+            padded,
+            num_channels,
+            filter_size,
+            strides=1,
+            padding='VALID',
+            dilation_rate=rate,
+            name=name)
         return result
 
 
-def _block(inputs, output_channels, filter_size=2,
-           depth=4, dilation_base=4, causal=True, name='res_block'):
+def _block(inputs,
+           output_channels,
+           filter_size=4,
+           depth=4,
+           dilation_base=2,
+           causal=True,
+           name='res_block'):
     """One block which we use in between residual layers. Consists of a number
     of stacked dilated convolutions and layer normalisation.
 
@@ -90,19 +101,21 @@ def _block(inputs, output_channels, filter_size=2,
         net = inputs
         for layer in range(depth):
             if causal:
-                net = _causal_convolution(net,
-                                          filter_size,
-                                          output_channels,
-                                          rate=dilation_base**layer,
-                                          name='conv_{}'.format(layer))
+                net = _causal_convolution(
+                    net,
+                    filter_size,
+                    output_channels,
+                    rate=dilation_base**layer,
+                    name='conv_{}'.format(layer))
             else:
-                net = tf.layers.conv1d(net,
-                                       output_channels,
-                                       filter_size,
-                                       dilation_rate=dilation_base**layer,
-                                       strides=1,
-                                       padding='SAME',
-                                       name='conv_{}'.format(layer))
+                net = tf.layers.conv1d(
+                    net,
+                    output_channels,
+                    filter_size,
+                    dilation_rate=dilation_base**layer,
+                    strides=1,
+                    padding='SAME',
+                    name='conv_{}'.format(layer))
             net = layer_norm(net, name='ln_{}'.format(layer))
             net = tf.nn.relu(net)
         return net
@@ -123,8 +136,8 @@ def layer_norm(inputs, epsilon=1e-8, name='layer_norm'):
             initializer=tf.constant_initializer(1),
             trainable=True)
 
-        mean, variance = tf.nn.moments(inputs, axes=[len(shape) - 1],
-                                       keep_dims=True)
+        mean, variance = tf.nn.moments(
+            inputs, axes=[len(shape) - 1], keep_dims=True)
 
         result = (inputs - mean) / tf.sqrt(variance + epsilon)
 
@@ -170,10 +183,12 @@ def upsampling_net(inputs,
         net = tf.squeeze(expanded_inputs, 1)
 
         for block in range(num_blocks):
-            net += _block(net, block_width,
-                          filter_size=2,
-                          depth=block_depth,
-                          causal=causal,
-                          name='block_{}'.format(block))
+            net += _block(
+                net,
+                block_width,
+                filter_size=2,
+                depth=block_depth,
+                causal=causal,
+                name='block_{}'.format(block))
 
         return net
