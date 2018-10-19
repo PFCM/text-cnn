@@ -1,15 +1,12 @@
 """
 Various datasets for training the models at different levels.
 """
-from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
-
-from six.moves import reduce
+from __future__ import absolute_import, division, print_function
 
 import numpy as np
 import tensorflow as tf
 import tensorflow.contrib.data as data
+from six.moves import reduce
 
 
 def load_vocab(sw_vocab):
@@ -31,12 +28,12 @@ def _parse_line(line):
     """
     Parse a line from a fastText .vec file.
     """
-    items = line.split()
+    items = line.rstrip().split(' ')
     word = items[0]
     if word == '</s>':
         word = '\n'
 
-    vec = np.array([float(item) for item in line[1:]])
+    vec = np.array([float(item) for item in items[1:]], dtype=np.float32)
 
     return word, vec
 
@@ -47,9 +44,8 @@ def load_word_embeddings(ft_vecfile, vocab, trainable=False):
     into a tensorflow variable.
     """
     with open(ft_vecfile) as ft_file:
-        num_embeddings, embedding_dim = (int(item)
-                                         for item
-                                         in ft_file.readline().split())
+        num_embeddings, embedding_dim = (
+            int(item) for item in ft_file.readline().split())
         print('found {} embeddings of size {}'.format(num_embeddings,
                                                       embedding_dim))
         words_vectors = (_parse_line(line) for line in ft_file)
@@ -59,9 +55,7 @@ def load_word_embeddings(ft_vecfile, vocab, trainable=False):
     embedding_array = np.array([int_to_vec[i] for i in range(num_embeddings)])
 
     embedding_matrix = tf.Variable(
-        embedding_array,
-        name='embeddings',
-        trainable=trainable)
+        embedding_array, name='embeddings', trainable=trainable)
 
     return embedding_matrix
 
@@ -73,17 +67,19 @@ def _load_text(path, vocab):
     in.
     """
     with open(path) as text_file:
-        tokens = (token
-                  for line in text_file
-                  for token in line.split() + ['\n'])
-        return np.array([vocab[token] for token in tokens], dtype=np.int32)
+        tokens = [
+            vocab[token] for line in text_file
+            for token in line.split() + ['\n']
+        ]
+        print('{} tokens in data'.format(len(tokens)))
+        return np.array(tokens, dtype=np.int32)
 
 
 def _regenerate_indices(data_length, batch_size):
     """
     generate a batch of indices, in the first quarter of the data
     """
-    return np.random.randint(data_length//4, size=(batch_size,))
+    return np.random.randint(data_length // 4, size=(batch_size, ))
 
 
 class TextDataset(object):
@@ -99,8 +95,10 @@ class TextDataset(object):
 
     def get_batch(self):
         """Get some chunks of data"""
-        data = np.array([self._flat_data[index:index+self._sequence_length]
-                         for index in self._batch_indices])
+        data = np.array([
+            self._flat_data[index:index + self._sequence_length]
+            for index in self._batch_indices
+        ])
         self._batch_indices += self._sequence_length
         if np.any(self._batch_indices > self._flat_data.shape[0]):
             self._batch_indices = _regenerate_indices(self._flat_data.shape[0],
@@ -116,9 +114,9 @@ def load_dataset(filepath, vocab, sequence_length, batch_size):
     starting position until one of them reaches the end.
     """
     # load the data into a big numpy array
+    print('loading from {}'.format(filepath))
     flat_data = _load_text(filepath, vocab)
-    batch_indices = _regenerate_indices(flat_data.shape[0],
-                                        batch_size)
+    batch_indices = _regenerate_indices(flat_data.shape[0], batch_size)
 
     dataset = TextDataset(flat_data, sequence_length, batch_size)
 
@@ -151,5 +149,6 @@ def to_human_readable(items, vocab, invert_vocabulary=False):
         items = np.reshape(items, (1, -1))
     if invert_vocabulary:
         vocab = invert_vocab(vocab)
-    return [reduce(_subword_join, [vocab[index] for index in row])
-            for row in items]
+    return [
+        reduce(_subword_join, [vocab[index] for index in row]) for row in items
+    ]

@@ -7,26 +7,47 @@ import tensorflow as tf
 import tensorflow.contrib.slim as slim
 
 
-def generator_net(inputs,
-                  vocab_size,
-                  num_blocks=2,
-                  block_size=3,
-                  block_width=128):
+def training_generator_net(inputs, num_blocks=2, block_size=3, block_width=64):
     """
     A network to generate something conditioned purely on a single set of
-    input embeddings (which can be replaced by its own outputs at generation
-    time, although this could be fairly inefficient.
+    input embeddings.
+
+    The training is fairly straightforward, the idea being that it will be
+    able to be applied autoregressively to generate new things
+    unconditionally. This will definitely be pretty slow, but hopefully
+    the sequences will be pretty short.
+
+    Args:
+        inputs: [batch_size, time, embedding_size] float tensor of inputs.
+        vocab_size: vocabulary size, the size of the final outputs.
+        num_blocks: number of residual blocks in each stage of the network.
+            Defaults to 2, for a fairly small test network.
+        block_size: number of individual residual units in each block.
+            Defaults to 3.
+        block_width: number of channels in each of the residual blocks,
+            also the width of the hidden codes. Defaults to 128.
+
+    Returns:
+        outputs: same shape as the inputs, it's up to the user to slice and
+            for training.
     """
     with tf.variable_scope('generator'):
-        net = inputs
-        for block in range(num_blocks):
+        input_width = inputs.get_shape()[-1].value
+        net = _block(
+            inputs,
+            block_width,
+            filter_size=2,
+            depth=block_size,
+            name='block_0')
+        for block in range(num_blocks - 1):
             net += _block(
                 net,
                 block_width,
                 filter_size=2,
                 depth=block_size,
-                name='block_{}'.format(block))
-        net = tf.layers.conv1d(net, block_width, 1, 1)
+                name='block_{}'.format(block + 1))
+        net = tf.layers.conv1d(net, input_width, 1, 1)
+
     return net
 
 
@@ -126,13 +147,13 @@ def layer_norm(inputs, epsilon=1e-8, name='layer_norm'):
     Layer normalisation along the last axis.
     """
     with tf.variable_scope(name):
-        shape = tf.shape(inputs)
+        shape = inputs.get_shape()
         beta = tf.get_variable(
-            'beta', [shape[-1]],
+            'beta', [shape[-1].value],
             initializer=tf.constant_initializer(0),
             trainable=True)
         gamma = tf.get_variable(
-            'gamma', [shape[-1]],
+            'gamma', [shape[-1].value],
             initializer=tf.constant_initializer(1),
             trainable=True)
 
@@ -140,12 +161,13 @@ def layer_norm(inputs, epsilon=1e-8, name='layer_norm'):
             inputs, axes=[len(shape) - 1], keep_dims=True)
 
         result = (inputs - mean) / tf.sqrt(variance + epsilon)
+        result = tf.cast(result, tf.float32)  # probably could be earlier
 
         return gamma * result + beta
 
 
 def upsampling_net(inputs,
-                   num_blocks=2,
+                   num_blocks=3,
                    block_depth=3,
                    block_width=128,
                    causal=True,
