@@ -77,6 +77,9 @@ def main(_):
     target_batch, vocab = get_data(FLAGS.data_path, FLAGS.vocab_path,
                                    FLAGS.embedding_path, FLAGS.rate // 2,
                                    FLAGS.sequence_length, FLAGS.batch_size)
+    print('\n'.join(
+        '{}: {}'.format(a.split('@@')[0], b) for a, b in vocab.items()))
+    raise SystemExit
     if FLAGS.rate > 1:
         input_batch = _downsample_inputs(target_batch, 2)
     else:
