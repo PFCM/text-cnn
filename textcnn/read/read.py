@@ -5,7 +5,6 @@ from __future__ import absolute_import, division, print_function
 
 import numpy as np
 import tensorflow as tf
-import tensorflow.contrib.data as data
 from six.moves import reduce
 
 
@@ -15,12 +14,15 @@ def load_vocab(sw_vocab):
     Inserts a newline character into the vocab if it is not present.
     """
     with open(sw_vocab) as vocab_file:
-        words = (line.split()[0] for line in vocab_file)
+        words = (line.split(' ')[0] for line in vocab_file)
+        words = list(words)
         vocab = {word: i for i, word in enumerate(sorted(words))}
-
     if '\n' not in vocab:
         vocab['\n'] = len(vocab)
 
+    print('\n'.join(
+        '{}: {}'.format(*pair)
+        for pair in list(sorted(vocab.items(), key=lambda p: p[1]))[:10]))
     return vocab
 
 
@@ -32,13 +34,15 @@ def _parse_line(line):
     word = items[0]
     if word == '</s>':
         word = '\n'
+    elif word == '@@':
+        word = '\xa0@@'
 
     vec = np.array([float(item) for item in items[1:]], dtype=np.float32)
 
     return word, vec
 
 
-def load_word_embeddings(ft_vecfile, vocab, trainable=False):
+def _load_fasttext_embeddings(ft_vecfile, vocab, trainable=False):
     """
     Load pre-trained word embeddings from the format output by fastText
     into a tensorflow variable.
@@ -50,7 +54,6 @@ def load_word_embeddings(ft_vecfile, vocab, trainable=False):
                                                       embedding_dim))
         words_vectors = (_parse_line(line) for line in ft_file)
         int_to_vec = {vocab[word]: vec for word, vec in words_vectors}
-
     # stack them up
     embedding_array = np.array([int_to_vec[i] for i in range(num_embeddings)])
 
@@ -60,16 +63,37 @@ def load_word_embeddings(ft_vecfile, vocab, trainable=False):
     return embedding_matrix
 
 
+def _make_embedding_matrix(embedding_dim, vocab, trainable=True):
+    """make a matrix for word embeddings"""
+    embedding_matrix = tf.get_variable(
+        'embeddings', shape=[len(vocab), embedding_dim], trainable=trainable)
+    return embedding_matrix
+
+
+def load_word_embeddings(ft_vecfile, vocab, trainable=False,
+                         embedding_dim=128):
+    """either load pre-trained embeddings or just make a matrix"""
+    if ft_vecfile:
+        return _load_fasttext_embeddings(ft_vecfile, vocab, trainable)
+    return _make_embedding_matrix(embedding_dim, vocab, trainable)
+
+
+def _split_line(line):
+    """split a line and append a newline, unless it's empty"""
+    line = (token for token in line.rstrip().split(' ') if token != '')
+    line = (' @@' if token == '@@' else token for token in line)
+    return list(line) + ['\n']
+
+
 def _load_text(path, vocab):
     """
     Load the data as a big numpy array of ints.
-    Tokenising simply splits on whitespace, although newlines are added back
+    Tokenising simply splits on space, although newlines are added back
     in.
     """
     with open(path) as text_file:
         tokens = [
-            vocab[token] for line in text_file
-            for token in line.split() + ['\n']
+            vocab[token] for line in text_file for token in _split_line(line)
         ]
         print('{} tokens in data'.format(len(tokens)))
         return np.array(tokens, dtype=np.int32)
@@ -93,7 +117,7 @@ class TextDataset(object):
         self._batch_indices = _regenerate_indices(self._flat_data.shape[0],
                                                   self._batch_size)
 
-    def get_batch(self):
+    def get_batch(self, infinite=False):
         """Get some chunks of data"""
         data = np.array([
             self._flat_data[index:index + self._sequence_length]
@@ -101,9 +125,17 @@ class TextDataset(object):
         ])
         self._batch_indices += self._sequence_length
         if np.any(self._batch_indices > self._flat_data.shape[0]):
-            self._batch_indices = _regenerate_indices(self._flat_data.shape[0],
-                                                      self._batch_size)
+            if infinite:
+                self._batch_indices = _regenerate_indices(
+                    self._flat_data.shape[0], self._batch_size)
+            else:
+                raise StopIteration()
         return data
+
+    def __iter__(self):
+        """go through the batches once"""
+        while True:
+            yield self.get_batch(False)
 
 
 def load_dataset(filepath, vocab, sequence_length, batch_size):
@@ -116,14 +148,12 @@ def load_dataset(filepath, vocab, sequence_length, batch_size):
     # load the data into a big numpy array
     print('loading from {}'.format(filepath))
     flat_data = _load_text(filepath, vocab)
-    batch_indices = _regenerate_indices(flat_data.shape[0], batch_size)
 
-    dataset = TextDataset(flat_data, sequence_length, batch_size)
+    data = tf.data.Dataset.from_generator(
+        lambda: TextDataset(flat_data, sequence_length, batch_size), tf.int32,
+        [batch_size, sequence_length])
 
-    data_tensor = tf.py_func(dataset.get_batch, [], [tf.int32])[0]
-    data_tensor.set_shape([batch_size, sequence_length])
-
-    return data_tensor
+    return data.make_one_shot_iterator().get_next()
 
 
 def _subword_join(a, b):
