@@ -66,7 +66,10 @@ def _load_fasttext_embeddings(ft_vecfile, vocab, trainable=False):
 def _make_embedding_matrix(embedding_dim, vocab, trainable=True):
     """make a matrix for word embeddings"""
     embedding_matrix = tf.get_variable(
-        'embeddings', shape=[len(vocab), embedding_dim], trainable=trainable)
+        'embeddings',
+        shape=[len(vocab), embedding_dim],
+        trainable=trainable,
+        initializer=tf.initializers.orthogonal())
     return embedding_matrix
 
 
