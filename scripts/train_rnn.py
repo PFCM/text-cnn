@@ -71,7 +71,7 @@ def main(args=None):
     input_batch = data_batch[:, :-1]
     target_batch = data_batch[:, 1:]
 
-    preds = rnn_model(input_batch, [1024], embedding_matrix)
+    preds = rnn_model(input_batch, [512], embedding_matrix)
     check = tf.argmax(preds, -1, output_type=tf.int32)
     print('got model')
 
