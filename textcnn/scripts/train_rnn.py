@@ -44,7 +44,8 @@ def get_data(data_path, vocab_path, embedding_path, sequence_length,
         data_tensor = data.load_dataset(data_path, vocab, sequence_length,
                                         batch_size)
     with tf.variable_scope('embeddings'):
-        embedding_matrix = data.load_word_embeddings(embedding_path, vocab)
+        embedding_matrix = data.load_word_embeddings(
+            embedding_path, vocab, trainable=True)
 
     return data_tensor, embedding_matrix, vocab
 
